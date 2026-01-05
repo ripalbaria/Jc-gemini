@@ -15,50 +15,48 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch with Proxy Failover
+      - name: Fetch and Validate
         run: |
-          # 1. Scraping fresh proxies
+          # 1. Fresh proxies download
           curl -sL "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt" -o fresh_proxies.txt
           
-          # 2. Creating a list: Your working IP first, then backups
+          # 2. Pool: Manual IP Sabse Pehle
           echo "115.114.77.133:9090" > proxy_list.txt
-          head -n 10 fresh_proxies.txt >> proxy_list.txt
+          head -n 20 fresh_proxies.txt >> proxy_list.txt
 
           SUCCESS=false
 
-          # 3. Exactly like your working code but in a loop
           while read -r p; do
-            # Cleaning proxy format to match your working curl
             current_proxy=$(echo "$p" | tr -d '\r' | sed 's|http://||g')
-            echo "Trying Proxy: http://$current_proxy"
+            echo "Attempting: http://$current_proxy"
 
-            if curl -x "http://$current_proxy" -L --compressed --connect-timeout 10 --max-time 20 \
+            # 3. Fetching data
+            if curl -x "http://$current_proxy" -L --compressed --connect-timeout 15 --max-time 30 \
               -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
-              -H "Accept: */*" \
-              -H "Accept-Encoding: gzip" \
-              -H "Cache-Control: no-cache, no-store" \
               "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45" \
               -o temp_jcinema.m3u || true; then
 
-              # Same safety check as your working code
-              if grep -q "#EXTM3U" temp_jcinema.m3u; then
+              # 4. Content Validation
+              if [ -s temp_jcinema.m3u ] && grep -q "#EXTM3U" temp_jcinema.m3u; then
+                echo "✅ VALID DATA RECEIVED"
+                # Nayi date add karna taaki file hamesha 'different' dikhe
+                echo "# UPDATED: $(date)" >> temp_jcinema.m3u
                 mv temp_jcinema.m3u jcinema.m3u
-                echo "SUCCESS: Valid playlist received from $current_proxy"
                 SUCCESS=true
                 break
+              else
+                rm -f temp_jcinema.m3u
               fi
             fi
-            rm -f temp_jcinema.m3u
           done < proxy_list.txt
 
-          if [ "$SUCCESS" = false ]; then
-            echo "FAILURE: All proxies failed."
-            exit 1
-          fi
+          if [ "$SUCCESS" = false ]; then exit 1; fi
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add jcinema.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update: $(date)" && git push)
+          # Force commit even if no major content change
+          git commit -m "Auto-Update: $(date)" || echo "No changes to commit"
+          git push origin main
