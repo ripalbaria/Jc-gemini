@@ -1,45 +1,39 @@
-name: Proxy-Sync Playlist
-
-on:
-  schedule:
-    - cron: '*/20 * * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  download:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Fetch with Proxy
+      - name: Auto-Fetch Proxies and Update Playlist
         run: |
-          # 1. Fetch data using your working Indian Proxy
-          # Replace 115.114.77.133:9090 with your working proxy address
-          curl -x "http://115.114.77.133:9090" -L --compressed \
-            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
-            -H "Accept: */*" \
-            -H "Accept-Encoding: gzip" \
-            -H "Cache-Control: no-cache, no-store" \
-            "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45" \
-            -o temp_jcinema.m3u
+          # 1. Download fresh HTTP proxy list from your source
+          curl -sL "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt" -o fresh_proxies.txt
 
-          # 2. SAFETY CHECK: Only proceed if file starts with #EXTM3U
-          # This prevents saving HTML error pages to your repo
-          if grep -q "#EXTM3U" temp_jcinema.m3u; then
-            mv temp_jcinema.m3u jcinema.m3u
-            echo "SUCCESS: Valid playlist received."
-          else
-            echo "FAILURE: Received HTML/Bot Challenge. Skipping update."
+          # 2. Extract top 15 proxies for testing
+          head -n 15 fresh_proxies.txt > test_pool.txt
+
+          SUCCESS=false
+
+          # 3. Loop through the pool
+          while read -r line; do
+            # Clean hidden mobile characters from the IP
+            proxy=$(echo "http://$line" | tr -d '\r')
+            echo "Attempting with Proxy: $proxy"
+
+            # 4. Try the fetch with a strict 15-second timeout
+            if curl -x "$proxy" -L --compressed --connect-timeout 10 --max-time 15 \
+              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
+              "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45" \
+              -o temp_jcinema.m3u || true; then
+
+              # 5. Check if we got the real M3U header
+              if [ -f temp_jcinema.m3u ] && grep -q "#EXTM3U" temp_jcinema.m3u; then
+                echo "✅ SUCCESS: Valid playlist received from $proxy"
+                mv temp_jcinema.m3u jcinema.m3u
+                SUCCESS=true
+                break
+              fi
+            fi
+            echo "❌ Proxy $proxy failed. Trying next..."
+            rm -f temp_jcinema.m3u
+          done < test_pool.txt
+
+          # If all 15 proxies in the pool fail, the job stops here
+          if [ "$SUCCESS" = false ]; then
+            echo "CRITICAL ERROR: No working proxies found in the pool."
             exit 1
           fi
-
-      - name: Commit and Push Changes
-        run: |
-          git config --global user.name "GithubBot"
-          git config --global user.email "bot@github.com"
-          git add jcinema.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update: $(date)" && git push)
