@@ -1,9 +1,9 @@
-name: Ultimate-Proxy-Sync
+name: Proxy-Sync Playlist
 
 on:
   schedule:
-    - cron: '*/20 * * * *'  # Har 20 minute mein auto-run hoga
-  workflow_dispatch:        # Isse "Run workflow" button aayega
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,44 +15,44 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Auto-Fetch and Update Playlist
+      - name: Fetch with Proxy Failover
         run: |
-          # 1. Download fresh HTTP proxy list
+          # 1. Scraping fresh proxies
           curl -sL "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt" -o fresh_proxies.txt
-
-          # 2. Combine Manual Proxy + Top 15 Scraped Proxies
-          # Pehle aapka working proxy try karega, fir baaki backup
-          echo "115.114.77.133:9090" > combined_pool.txt
-          head -n 15 fresh_proxies.txt >> combined_pool.txt
+          
+          # 2. Creating a list: Your working IP first, then backups
+          echo "115.114.77.133:9090" > proxy_list.txt
+          head -n 10 fresh_proxies.txt >> proxy_list.txt
 
           SUCCESS=false
 
-          # 3. Loop through the pool
-          while read -r line; do
-            # Mobile paste ke hidden characters clean karna zaroori hai
-            proxy=$(echo "http://$line" | tr -d '\r' | sed 's|http://http://|http://|g')
-            echo "Attempting with Proxy: $proxy"
+          # 3. Exactly like your working code but in a loop
+          while read -r p; do
+            # Cleaning proxy format to match your working curl
+            current_proxy=$(echo "$p" | tr -d '\r' | sed 's|http://||g')
+            echo "Trying Proxy: http://$current_proxy"
 
-            # 4. Try the fetch (|| true taaki error aane par script na ruke)
-            if curl -x "$proxy" -L --compressed --connect-timeout 10 --max-time 20 \
+            if curl -x "http://$current_proxy" -L --compressed --connect-timeout 10 --max-time 20 \
               -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
+              -H "Accept: */*" \
+              -H "Accept-Encoding: gzip" \
+              -H "Cache-Control: no-cache, no-store" \
               "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45" \
               -o temp_jcinema.m3u || true; then
 
-              # 5. Check if we got the real M3U header
-              if [ -f temp_jcinema.m3u ] && grep -q "#EXTM3U" temp_jcinema.m3u; then
-                echo "✅ SUCCESS: Valid playlist received from $proxy"
+              # Same safety check as your working code
+              if grep -q "#EXTM3U" temp_jcinema.m3u; then
                 mv temp_jcinema.m3u jcinema.m3u
+                echo "SUCCESS: Valid playlist received from $current_proxy"
                 SUCCESS=true
                 break
               fi
             fi
-            echo "❌ Proxy $proxy failed. Trying next..."
             rm -f temp_jcinema.m3u
-          done < combined_pool.txt
+          done < proxy_list.txt
 
           if [ "$SUCCESS" = false ]; then
-            echo "CRITICAL ERROR: No working proxies found."
+            echo "FAILURE: All proxies failed."
             exit 1
           fi
 
@@ -61,4 +61,4 @@ jobs:
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add jcinema.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-Update: $(date)" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update: $(date)" && git push)
