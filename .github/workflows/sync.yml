@@ -1,33 +1,4 @@
-name: Auto-Sync Playlist
-
-on:
-  schedule:
-    - cron: '*/20 * * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write  # REQUIRED FIX
-
-jobs:
-  download:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Fetch Latest Playlist
+      - name: Debug Response
         run: |
-          curl -L --compressed \
-            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
-            -H "Accept: */*" \
-            -H "Accept-Encoding: gzip" \
-            -H "Cache-Control: no-cache, no-store" \
-            "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45" \
-            -o jcinema.m3u
-
-      - name: Commit and Push Changes
-        run: |
-          git config --global user.name "GithubBot"
-          git config --global user.email "bot@github.com"
-          git add jcinema.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update playlist: $(date)" && git push)
+          curl -I -L -A "Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
+          "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45"
