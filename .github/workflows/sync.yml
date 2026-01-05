@@ -1,4 +1,36 @@
-      - name: Debug Response
+name: Auto-Sync Playlist
+
+on:
+  schedule:
+    # This runs every 20 minutes automatically
+    - cron: '*/20 * * * *'
+  workflow_dispatch: # This creates the manual "Run workflow" button
+
+permissions:
+  contents: write # Grants permission to push the file back to your repo
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Fetch Latest Playlist
         run: |
-          curl -I -L -A "Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
-          "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45"
+          # Uses your working Termux command setup
+          curl -L --compressed \
+            -A "Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
+            -H "Accept: */*" \
+            -H "Accept-Encoding: gzip" \
+            -H "Cache-Control: no-cache, no-store" \
+            "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45" \
+            -o jcinema.m3u
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GithubBot"
+          git config --global user.email "bot@github.com"
+          git add jcinema.m3u
+          # Only pushes if the content of the file has actually changed
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update playlist: $(date)" && git push)
