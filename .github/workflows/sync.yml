@@ -1,21 +1,40 @@
-      - name: Auto-Fetch Proxies and Update Playlist
+name: Ultimate-Proxy-Sync
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'  # Har 20 minute mein auto-run hoga
+  workflow_dispatch:        # Isse "Run workflow" button aayega
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Auto-Fetch and Update Playlist
         run: |
-          # 1. Download fresh HTTP proxy list from your source
+          # 1. Download fresh HTTP proxy list
           curl -sL "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt" -o fresh_proxies.txt
 
-          # 2. Extract top 15 proxies for testing
-          head -n 15 fresh_proxies.txt > test_pool.txt
+          # 2. Combine Manual Proxy + Top 15 Scraped Proxies
+          # Pehle aapka working proxy try karega, fir baaki backup
+          echo "115.114.77.133:9090" > combined_pool.txt
+          head -n 15 fresh_proxies.txt >> combined_pool.txt
 
           SUCCESS=false
 
           # 3. Loop through the pool
           while read -r line; do
-            # Clean hidden mobile characters from the IP
-            proxy=$(echo "http://$line" | tr -d '\r')
+            # Mobile paste ke hidden characters clean karna zaroori hai
+            proxy=$(echo "http://$line" | tr -d '\r' | sed 's|http://http://|http://|g')
             echo "Attempting with Proxy: $proxy"
 
-            # 4. Try the fetch with a strict 15-second timeout
-            if curl -x "$proxy" -L --compressed --connect-timeout 10 --max-time 15 \
+            # 4. Try the fetch (|| true taaki error aane par script na ruke)
+            if curl -x "$proxy" -L --compressed --connect-timeout 10 --max-time 20 \
               -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
               "https://jiocinema-live.cloud-hatchh.workers.dev/?token=42e4f5-2d413b-3c37d8-5f3f45" \
               -o temp_jcinema.m3u || true; then
@@ -30,10 +49,16 @@
             fi
             echo "❌ Proxy $proxy failed. Trying next..."
             rm -f temp_jcinema.m3u
-          done < test_pool.txt
+          done < combined_pool.txt
 
-          # If all 15 proxies in the pool fail, the job stops here
           if [ "$SUCCESS" = false ]; then
-            echo "CRITICAL ERROR: No working proxies found in the pool."
+            echo "CRITICAL ERROR: No working proxies found."
             exit 1
           fi
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GithubBot"
+          git config --global user.email "bot@github.com"
+          git add jcinema.m3u
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-Update: $(date)" && git push)
