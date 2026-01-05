@@ -29,8 +29,8 @@ jobs:
 
           # 2. SAFETY CHECK: Only proceed if file starts with #EXTM3U
           # This prevents saving HTML error pages to your repo
-          if grep -q "#EXTM3U" temp_jcinema.m3u; then
-            mv temp_jcinema.m3u j.m3u
+          if grep -q "#EXTM3U" temp_j.m3u; then
+            mv temp_j.m3u j.m3u
             echo "SUCCESS: Valid playlist received."
           else
             echo "FAILURE: Received HTML/Bot Challenge. Skipping update."
